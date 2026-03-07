@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -eu
+
+MSG_FILE="${1:-}"
+if [ -z "$MSG_FILE" ] || [ ! -f "$MSG_FILE" ]; then
+  exit 0
+fi
+
+NON_ASCII_LINES="$(grep -v '^[[:space:]]*#' "$MSG_FILE" | grep -n '[^[:ascii:]]' || true)"
+
+if [ -n "$NON_ASCII_LINES" ]; then
+  echo "ERROR: Commit message must be English-only (ASCII)." >&2
+  echo "Found non-ASCII content:" >&2
+  echo "$NON_ASCII_LINES" >&2
+  exit 1
+fi
+
+exit 0

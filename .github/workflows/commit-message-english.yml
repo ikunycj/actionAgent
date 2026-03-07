@@ -1,0 +1,48 @@
+name: Commit Message English Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check-commit-message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages (ASCII only)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            COMMITS="$(git rev-list "${BASE}..${HEAD}")"
+          else
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.sha }}"
+            if [[ "${BEFORE}" == "0000000000000000000000000000000000000000" ]]; then
+              COMMITS="$(git rev-list --max-count=50 "${AFTER}")"
+            else
+              COMMITS="$(git rev-list "${BEFORE}..${AFTER}")"
+            fi
+          fi
+
+          FAIL=0
+          for COMMIT in ${COMMITS}; do
+            MSG="$(git log --format=%B -n 1 "${COMMIT}")"
+            if printf "%s" "${MSG}" | grep -n '[^[:ascii:]]' >/dev/null; then
+              echo "::error::Commit ${COMMIT} contains non-ASCII characters. Use English commit messages only."
+              echo "Commit message:"
+              echo "${MSG}"
+              FAIL=1
+            fi
+          done
+
+          if [[ ${FAIL} -ne 0 ]]; then
+            exit 1
+          fi
