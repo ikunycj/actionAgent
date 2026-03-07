@@ -1,0 +1,6 @@
+/openspec/
+
+# OpenSpec prompts/commands for local agent clients
+/.cursor/
+/.codex/
+/.claude/
