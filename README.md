@@ -1,62 +1,74 @@
-﻿# ActionAgent
+# ActionAgent
 
-A deployment-first distributed general-purpose Agent platform.
-
-## Positioning
-
-ActionAgent aims to deliver executable, collaborative, and extensible agent capabilities with minimal deployment overhead.
-
-Core value:
-1. Trigger instant tasks from clients or web.
-2. Run long tasks continuously on local or remote nodes.
-3. Push results back with auditability and traceability.
+A deployment-first distributed Agent platform focused on executable tasks, observability, and auditable operations.
 
 Chinese version: [README.zh-CN.md](README.zh-CN.md)
 
-## Product Shape
+## 1. Project Overview
 
-ActionAgent follows a dual-plane architecture: control plane + execution plane.
+### Positioning
 
-### 1) Core (Execution Core)
+ActionAgent aims to provide a low-friction Agent runtime that can be started quickly, run reliably, and remain operationally observable.
+
+Core value:
+1. Trigger instant tasks from clients or web entrypoints.
+2. Run long tasks continuously on local or remote nodes.
+3. Return results with traceable logs and audit records.
+
+### Macro Architecture
+
+ActionAgent follows a dual-plane model: control plane + execution plane.
+
+1. Core (Execution Core)
 - Form: Go single-binary runtime (`actionagentd`)
 - Platforms: Windows / Linux / macOS
-- Responsibility: task execution, model calls, tool runtime, logs, and audit output
-- Current status: available in MVP (local single-node runtime)
+- Responsibility: task execution, model routing, tool runtime, logging, events, and audit output
 
-### 2) Client (Control Plane)
-- Form: desktop / mobile client (phased)
-- Responsibility: trigger tasks, view status, handle approvals, receive receipts
-- Current status: currently exposed mainly via HTTP API
+2. Client (Control Plane)
+- Form: desktop/mobile clients (phased rollout)
+- Responsibility: trigger tasks, view status, process approvals, receive receipts
 
-### 3) Cloud Relay (Optional)
-- Responsibility: cross-network node relay and collaboration
-- Current status: planned
+3. Cloud Relay (Optional)
+- Responsibility: cross-network relay and collaboration between nodes
 
-### 4) Team Console (Later Stage)
-- Responsibility: org permissions, policy templates, audit center, node orchestration
-- Current status: planned
+4. Team Console (Later Stage)
+- Responsibility: org governance, policy templates, audit center, and node orchestration
 
-## Current MVP Capabilities
+### Current MVP Scope
+
 1. Single-process runtime (`actionagentd`)
 2. Health check (`GET /healthz`)
 3. OpenAI-compatible endpoint (`POST /v1/chat/completions`)
 4. Direct run endpoint (`POST /v1/run`)
-5. Env-first config with optional `config.json`
+5. Typed frame bridge endpoint (`POST /ws/frame`)
+6. Baseline event stream and metrics output
 
-## How To Use
+### Roadmap Snapshot
 
-### A. Local Quick Start (Recommended)
+The repository is in active MVP evolution. Distributed relay hardening, richer approval flow, and team governance features are planned for later phases.
+
+## 2. How to Use
+
+### Prerequisites
+
+1. Go 1.23+
+2. Windows/Linux/macOS shell environment
+
+### Local Quick Start
+
+From repository root:
 
 1. Build
 
 ```bash
+cd agent
 go build -o actionagentd ./cmd/actionagentd
 ```
 
-2. Run with minimum env
+2. Run with explicit config path (recommended)
 
 ```bash
-ACTIONAGENT_API_KEY=sk-xxx ./actionagentd
+./actionagentd --config "$(pwd)/actionAgent.json"
 ```
 
 3. Health check
@@ -65,7 +77,9 @@ ACTIONAGENT_API_KEY=sk-xxx ./actionagentd
 curl http://127.0.0.1:8787/healthz
 ```
 
-### B. OpenAI-Compatible Usage
+### API Usage Examples
+
+1. OpenAI-compatible call
 
 ```bash
 curl -X POST http://127.0.0.1:8787/v1/chat/completions \
@@ -76,62 +90,74 @@ curl -X POST http://127.0.0.1:8787/v1/chat/completions \
   }'
 ```
 
-### C. Direct Task Execution
+2. Direct run call
 
 ```bash
 curl -X POST http://127.0.0.1:8787/v1/run \
   -H "Content-Type: application/json" \
   -d '{
-    "input":"Summarize this paragraph in Chinese.",
-    "model":"gpt-4o-mini"
+    "input":{"text":"Summarize this paragraph in Chinese."}
   }'
 ```
 
-Note: `/v1/run` request fields should follow the current server implementation.
+### Configuration Rules
 
-## Typical Scenarios
-1. Instant task: one-line trigger, fast response
-2. Long task: backend/scheduled trigger with async completion
-3. Cross-device relay (planned): trigger on phone, execute on desktop/cloud
+Config path resolution order:
+1. `--config`
+2. `ACTIONAGENT_CONFIG`
+3. `<binary-dir>/actionAgent.json`
+4. System defaults (lower priority than binary-dir)
+- Linux: `/etc/<appname>/actionAgent.json`
+- Windows: `C:\ProgramData\<AppName>\acgtionAgent.json`
 
-## Configuration
+Runtime behavior:
+1. The runtime loads exactly one resolved config file.
+2. Field-level multi-source merge is not applied.
+3. If the resolved file does not exist and path is writable, default config is auto-created.
 
-Optional config file: `config.json` (see `config.example.json`).
+### Deployment Helper Scripts
 
-Environment variables (override config file):
-- `ACTIONAGENT_ADDR` (default `127.0.0.1:8787`)
-- `ACTIONAGENT_UPSTREAM_BASE_URL` (default `https://api.openai.com/v1`)
-- `ACTIONAGENT_API_KEY`
-- `ACTIONAGENT_DEFAULT_MODEL` (default `gpt-4o-mini`)
-- `ACTIONAGENT_REQUEST_TIMEOUT_SECONDS` (default `120`)
-- `ACTIONAGENT_SYSTEM_PROMPT`
+1. PowerShell: `./scripts/start-agent.ps1`
+2. Bash: `./scripts/start-agent.sh`
 
-Legacy compatibility:
-- `GOCLAW_*` variables are still supported.
+## 3. Development Guide
 
-## Commit Message Policy
+### Repository Structure
 
-Commit messages must be English-only (ASCII).
+1. `agent/`: Agent kernel runtime implementation (Go)
+2. `docs/`: product/technical design and reference docs
+3. `openspec/`: change proposals, specs, design, and task tracking
+4. `scripts/`: local development and startup helper scripts
 
-This repository enforces it via:
-1. Local git hook: `.githooks/commit-msg`
-2. CI workflow: `.github/workflows/commit-message-english.yml`
+### Build and Test
 
-Enable local hook path:
+From `agent/`:
+
+```bash
+go test ./...
+```
+
+### Recommended Development Workflow
+
+1. Confirm product and technical intent in `docs/design/`.
+2. Create or update a change in OpenSpec (`/opsx:propose`).
+3. Implement tasks using `/opsx:apply` and keep task checkboxes in sync.
+4. Run tests (`go test ./...`) before review.
+5. Archive completed changes with `/opsx:archive <change-name>`.
+
+### Contribution and Quality Policy
+
+1. Commit messages must be English-only (ASCII).
+2. Enable local commit hook:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/setup-hooks.ps1
 ```
 
-## Deployment Notes
-1. Dev: env-only startup for fast validation
-2. Prod: fixed config + process supervisor (systemd / launchd / Windows Service)
-3. Security: keep API keys in secure storage, never commit secrets
+3. Keep code changes scoped to the active OpenSpec tasks.
 
-## Documentation
-- Product planning: `docs/actionagent-design.md`
-- Agent kernel PRD: `docs/design/agent-kernel-product-design.md`
-- Agent kernel technical solution: `docs/design/agent-kernel-technical-solution.md`
+### Related Documents
 
-## Roadmap Note
-This repository is in MVP evolution. Distributed relay, approval flow, and team governance will be released in phases.
+1. Product planning: `docs/actionagent-design.md`
+2. Agent kernel PRD: `docs/design/agent-kernel-product-design.md`
+3. Agent kernel technical solution: `docs/design/agent-kernel-technical-solution.md`

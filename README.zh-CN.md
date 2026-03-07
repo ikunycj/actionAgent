@@ -1,62 +1,74 @@
-﻿# ActionAgent
+# ActionAgent
 
-部署优先（Deployment-first）的分布式通用 Agent 平台。
-
-## 产品定位
-
-ActionAgent 致力于以最低部署成本提供可执行、可协作、可扩展的 Agent 能力。
-
-核心价值：
-1. 客户端或网页端发起临时任务。
-2. 本机/远端节点持续执行长任务。
-3. 结果可回推、可审计、可追溯。
+一个部署优先（Deployment-first）的分布式 Agent 平台，聚焦任务可执行性、可观测性与可审计性。
 
 English version: [README.md](README.md)
 
-## 产品形态概述
+## 1. 项目宏观介绍
 
-ActionAgent 采用“控制面 + 执行面”双平面架构。
+### 项目定位
 
-### 1) Core（执行面核心）
+ActionAgent 的目标是在低部署成本下，提供可快速启动、稳定运行、可持续观测的 Agent 核心运行时。
+
+核心价值：
+1. 从客户端或 Web 入口快速发起临时任务。
+2. 在本机或远端节点持续运行长任务。
+3. 以日志和审计记录保障结果可追溯。
+
+### 宏观架构
+
+ActionAgent 采用“控制面 + 执行面”双平面模型。
+
+1. Core（执行面核心）
 - 形态：Go 单二进制运行时（`actionagentd`）
-- 部署：Windows / Linux / macOS
-- 作用：任务执行、模型调用、工具运行、日志与审计输出
-- 当前状态：MVP 已支持（本机单节点）
+- 平台：Windows / Linux / macOS
+- 职责：任务执行、模型路由、工具运行、日志、事件与审计输出
 
-### 2) Client（控制面）
-- 形态：桌面端 / 移动端（分阶段）
-- 作用：发起任务、查看状态、处理审批、接收回执
-- 当前状态：当前主要通过 HTTP API 作为控制入口
+2. Client（控制面）
+- 形态：桌面端/移动端（分阶段）
+- 职责：发起任务、查看状态、处理审批、接收回执
 
-### 3) Cloud Relay（可选）
-- 作用：跨网络节点协同与任务接力
-- 当前状态：规划中
+3. Cloud Relay（可选）
+- 职责：跨网络节点接力与协同
 
-### 4) Team Console（后续）
-- 作用：组织权限、策略模板、审计中心、节点编排
-- 当前状态：规划中
+4. Team Console（后续）
+- 职责：组织治理、策略模板、审计中心、节点编排
 
-## 当前 MVP 能力
-1. 单进程运行 `actionagentd`
-2. 健康检查 `GET /healthz`
-3. OpenAI 兼容接口 `POST /v1/chat/completions`
-4. 直接执行接口 `POST /v1/run`
-5. 环境变量优先配置，`config.json` 可选
+### 当前 MVP 范围
 
-## 产品使用方法
+1. 单进程运行时（`actionagentd`）
+2. 健康检查接口（`GET /healthz`）
+3. OpenAI 兼容接口（`POST /v1/chat/completions`）
+4. 直接执行接口（`POST /v1/run`）
+5. Typed frame 桥接接口（`POST /ws/frame`）
+6. 基础事件流与指标输出
 
-### A. 本机快速启动（推荐）
+### 路线概览
 
-1. 构建二进制
+当前仓库处于 MVP 持续迭代阶段。分布式接力强化、更完整审批流程、团队治理能力将在后续阶段逐步落地。
+
+## 2. 项目使用方法
+
+### 环境要求
+
+1. Go 1.23+
+2. Windows/Linux/macOS 命令行环境
+
+### 本机快速启动
+
+在仓库根目录执行：
+
+1. 构建
 
 ```bash
+cd agent
 go build -o actionagentd ./cmd/actionagentd
 ```
 
-2. 设置最小运行变量并启动
+2. 通过显式配置路径启动（推荐）
 
 ```bash
-ACTIONAGENT_API_KEY=sk-xxx ./actionagentd
+./actionagentd --config "$(pwd)/actionAgent.json"
 ```
 
 3. 健康检查
@@ -65,7 +77,9 @@ ACTIONAGENT_API_KEY=sk-xxx ./actionagentd
 curl http://127.0.0.1:8787/healthz
 ```
 
-### B. OpenAI 兼容模式调用
+### API 调用示例
+
+1. OpenAI 兼容调用
 
 ```bash
 curl -X POST http://127.0.0.1:8787/v1/chat/completions \
@@ -76,62 +90,74 @@ curl -X POST http://127.0.0.1:8787/v1/chat/completions \
   }'
 ```
 
-### C. 直接任务执行调用
+2. 直接任务调用
 
 ```bash
 curl -X POST http://127.0.0.1:8787/v1/run \
   -H "Content-Type: application/json" \
   -d '{
-    "input":"Summarize this paragraph in Chinese.",
-    "model":"gpt-4o-mini"
+    "input":{"text":"Summarize this paragraph in Chinese."}
   }'
 ```
 
-说明：`/v1/run` 的请求字段以服务端当前实现为准。
+### 配置规则
 
-## 典型场景
-1. 临时任务：一句话触发，快速返回结果
-2. 长任务：通过后端或定时触发，后台执行并回执
-3. 跨设备协作（规划中）：手机触发、桌面/云端执行
+配置路径解析优先级：
+1. `--config`
+2. `ACTIONAGENT_CONFIG`
+3. `二进制所在目录/actionAgent.json`
+4. 系统默认路径（优先级低于二进制目录）
+- Linux：`/etc/<appname>/actionAgent.json`
+- Windows：`C:\ProgramData\<AppName>\acgtionAgent.json`
 
-## 配置说明
+运行时行为：
+1. 仅加载一个已解析的配置文件。
+2. 不做字段级多源合并。
+3. 当解析路径文件不存在且可写时，自动初始化默认配置。
 
-可选配置文件：`config.json`（参考 `config.example.json`）。
+### 部署辅助脚本
 
-环境变量（优先级高于配置文件）：
-- `ACTIONAGENT_ADDR`（默认 `127.0.0.1:8787`）
-- `ACTIONAGENT_UPSTREAM_BASE_URL`（默认 `https://api.openai.com/v1`）
-- `ACTIONAGENT_API_KEY`
-- `ACTIONAGENT_DEFAULT_MODEL`（默认 `gpt-4o-mini`）
-- `ACTIONAGENT_REQUEST_TIMEOUT_SECONDS`（默认 `120`）
-- `ACTIONAGENT_SYSTEM_PROMPT`
+1. PowerShell：`./scripts/start-agent.ps1`
+2. Bash：`./scripts/start-agent.sh`
 
-兼容变量：
-- 仍支持 `GOCLAW_*` 变量。
+## 3. 项目开发方法
 
-## Commit Message 规范
+### 仓库结构
 
-提交信息必须使用英文（ASCII 字符集）。
+1. `agent/`：Agent 内核运行时实现（Go）
+2. `docs/`：产品/技术设计与参考文档
+3. `openspec/`：变更提案、规格、设计、任务追踪
+4. `scripts/`：本地开发与启动辅助脚本
 
-仓库通过以下方式强制：
-1. 本地 Git Hook：`.githooks/commit-msg`
-2. CI 工作流：`.github/workflows/commit-message-english.yml`
+### 构建与测试
 
-启用本地 Hook 路径：
+在 `agent/` 目录执行：
+
+```bash
+go test ./...
+```
+
+### 推荐开发流程
+
+1. 先阅读并确认 `docs/design/` 下的产品与技术约束。
+2. 使用 OpenSpec 创建或更新变更（`/opsx:propose`）。
+3. 使用 `/opsx:apply` 实施任务，并同步更新任务勾选状态。
+4. 提交评审前执行测试（`go test ./...`）。
+5. 变更完成后执行归档（`/opsx:archive <change-name>`）。
+
+### 代码质量与提交流程
+
+1. Commit message 必须为英文（ASCII）。
+2. 启用本地提交钩子：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/setup-hooks.ps1
 ```
 
-## 部署建议
-1. 开发环境：使用环境变量快速验证闭环
-2. 生产环境：固定配置文件 + 进程守护（systemd / launchd / Windows Service）
-3. 安全建议：API Key 使用安全存储，不要提交到仓库
+3. 代码改动应与当前 OpenSpec 任务保持一致且范围最小化。
 
-## 文档导航
-- 总体产品规划：`docs/actionagent-design.md`
-- Agent 内核产品设计：`docs/design/agent-kernel-product-design.md`
-- Agent 内核技术方案：`docs/design/agent-kernel-technical-solution.md`
+### 相关文档
 
-## 路线说明
-当前仓库处于 MVP 演进阶段，分布式接力、审批流、团队治理等能力将按路线图分阶段上线。
+1. 总体产品规划：`docs/actionagent-design.md`
+2. Agent 内核产品设计：`docs/design/agent-kernel-product-design.md`
+3. Agent 内核技术方案：`docs/design/agent-kernel-technical-solution.md`

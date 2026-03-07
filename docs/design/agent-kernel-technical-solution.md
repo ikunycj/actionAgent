@@ -53,12 +53,12 @@
 6. Session & Memory（会话、转录、记忆索引、维护）。
 7. Event Bus（事件流、指标、日志、追踪）。
 
-### 3.2 角色模式
-同一二进制通过启动参数切换角色：
-1. `controller`
-2. `worker`
-3. `hybrid`（单机默认）
-4. `edge-worker`
+### 3.2 启动模式（单角色）
+对外只提供一个 `agent-kernel` 角色，不再要求用户理解或切换 `controller/worker`：
+1. 默认启动：单命令拉起完整内核（API + 调度 + 执行 + WebUI）。
+2. 配置来源：支持 WebUI 修改配置，也支持安装脚本/环境变量/配置文件直配。
+3. 配置文件定位优先级固定为：`--config` > `ACTIONAGENT_CONFIG` > `项目二进制文件所在目录/actionAgent.json` > 系统默认路径。
+4. 启动参数仅用于运行时行为（如配置路径、端口、日志级别），不用于角色拆分。
 
 ## 4. 模块规划（`actionAgent/agent`）
 
@@ -114,9 +114,9 @@
 
 ### 6.3 任务接力（Relay）
 1. 识别不可用节点（心跳、调用失败、策略不满足）。
-2. 生成 `TaskSnapshot` 并转交候选 Worker。
+2. 生成 `TaskSnapshot` 并转交候选内核实例。
 3. 新节点续跑并继承同一 `task_id` 语义。
-4. Controller 聚合多次 run，输出单一终态回执。
+4. 当前接入内核聚合多次 run，输出单一终态回执。
 
 ## 7. 协议与接口方案
 
@@ -124,7 +124,7 @@
 1. 请求帧：`{type:"req", id, method, params}`。
 2. 响应帧：`{type:"res", id, ok, payload|error}`。
 3. 事件帧：`{type:"event", event, payload, seq}`。
-4. 首帧必须 `connect`，携带客户端/设备/角色信息。
+4. 首帧必须 `connect`，携带客户端/设备/能力信息。
 
 ### 7.2 对外 HTTP 兼容层
 1. `/v1/chat/completions`（OpenAI 风格）。
@@ -223,10 +223,16 @@
 4. 文件权限与密钥泄漏风险检测。
 
 ## 13. 配置与热重载方案
-1. 配置变更先做 `diff paths`。
-2. 生成 `reload plan`：`hot/restart/noop`。
-3. 可热重载项直接生效（如 heartbeat、hooks、策略参数）。
-4. 必须重启项排队进入安全重启流程。
+1. 配置文件解析顺序固定：`--config` > `ACTIONAGENT_CONFIG` > `项目二进制文件所在目录/actionAgent.json` > 系统默认路径。
+2. 二进制目录候选路径：`<binary-dir>/actionAgent.json`。
+3. 系统默认路径建议（优先级低于二进制目录）：
+   - Linux：`/etc/<appname>/actionAgent.json`
+   - Windows：`C:\ProgramData\<AppName>\acgtionAgent.json`
+4. 仅解析并加载一个配置文件作为当前运行配置，不做同名字段多源覆盖。
+5. 配置变更先做 `diff paths`。
+6. 生成 `reload plan`：`hot/restart/noop`。
+7. 可热重载项直接生效（如 heartbeat、hooks、策略参数）。
+8. 必须重启项排队进入安全重启流程。
 
 ## 14. 可观测性方案
 
@@ -246,7 +252,7 @@
 ### 15.1 测试分层
 1. 单元测试：状态机、路由策略、工具策略。
 2. 组件测试：队列、去重、审批流、会话维护。
-3. 集成测试：Controller/Worker/Edge 端到端。
+3. 集成测试：单内核启动、配置加载、跨实例接力端到端。
 4. 稳定性测试：长任务、网络抖动、节点切换。
 
 ### 15.2 关键回归用例

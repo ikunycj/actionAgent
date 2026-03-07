@@ -4,3 +4,7 @@
 /.cursor/
 /.codex/
 /.claude/
+
+# Local Go caches used in sandboxed runs
+/agent/tmp-go-cache/*
+/agent/tmp-go-modcache/*
