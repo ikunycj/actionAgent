@@ -43,15 +43,31 @@ ActionAgent follows a dual-plane model: control plane + execution plane.
 5. Typed frame bridge endpoint (`POST /ws/frame`)
 6. Baseline event stream and metrics output
 
+### Current Implementation Snapshot (2026-03-08)
+
+The kernel has reached an initial runnable shape, with these implemented modules:
+1. Config loading and source resolution (`--config` / env / binary-dir / system default)
+2. Task engine with lane-aware queue, state transitions, and idempotency dedupe
+3. Dispatcher and terminal aggregation path for request lifecycle closure
+4. Model gateway with primary + fallback routing
+5. Tool runtime with tiered permissions and approval-token checks
+6. Session transcript + memory retrieval fallback
+7. Event bus and metrics endpoint output
+
+Still planned for next phases:
+1. Multi-node relay hardening and richer recovery snapshots
+2. Production-grade approval workflow and persistence
+3. WebUI and team-governance capabilities
+
 ### Roadmap Snapshot
 
-The repository is in active MVP evolution. Distributed relay hardening, richer approval flow, and team governance features are planned for later phases.
+The repository remains in active MVP evolution with a working kernel baseline in place.
 
 ## 2. How to Use
 
 ### Prerequisites
 
-1. Go 1.23+
+1. Go 1.25+ (recommended: Go 1.25.8)
 2. Windows/Linux/macOS shell environment
 
 ### Local Quick Start

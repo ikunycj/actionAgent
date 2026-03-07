@@ -8,3 +8,5 @@
 # Local Go caches used in sandboxed runs
 /agent/tmp-go-cache/*
 /agent/tmp-go-modcache/*
+/agent/.tmp-appdata/*
+/agent/.tmp-gopath/*

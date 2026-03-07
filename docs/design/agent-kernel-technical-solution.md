@@ -3,11 +3,28 @@
 ## 0. 文档信息
 - 文档名称：Agent 内核技术方案
 - 适用范围：`actionAgent/agent` 技术实现蓝图（本稿不含代码）
-- 版本：v1.0
-- 日期：2026-03-07
+- 版本：v1.1
+- 日期：2026-03-08
 - 关联文档：
   - `actionAgent/docs/actionagent-design.md`
   - `actionAgent/docs/design/agent-kernel-product-design.md`
+
+## 0.1 实现进展快照（2026-03-08）
+当前 `actionAgent/agent` 已形成可运行的内核雏形，阶段结论如下：
+
+已落地能力：
+1. 运行时主链路可启动：配置解析、子系统初始化、HTTP 服务启动与优雅关停。
+2. 网关已提供核心入口：`/healthz`、`/v1/chat/completions`、`/v1/run`、`/ws/frame`、`/events`、`/metrics`。
+3. Task Engine 已具备车道并发、状态迁移、重试协同与幂等去重基础能力。
+4. Model Gateway 已具备 `primary + fallback` 路由骨架与错误分流基础。
+5. Tool Runtime 已具备分级执行与审批令牌校验骨架。
+6. Session/Memory、Event Bus、Observability、Config Reload 分类等基础模块已联通并具备测试覆盖。
+
+待增强能力（后续里程碑）：
+1. 多节点接力链路的生产级稳定性（心跳、故障转移、恢复快照细化）。
+2. 审批与审计的持久化、检索与治理闭环。
+3. 更完整的协议兼容层（如 `/v1/responses`、Anthropic 兼容入口）。
+4. WebUI 与团队治理控制面的落地联调。
 
 ## 1. 方案目标
 1. 将 PRD 中的内核能力落为可实施的工程架构。
