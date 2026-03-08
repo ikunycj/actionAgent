@@ -90,7 +90,7 @@ go build -o actionagentd ./cmd/actionagentd
 3. Health check
 
 ```bash
-curl http://127.0.0.1:8787/healthz
+curl http://127.0.0.1:8000/healthz
 ```
 
 ### API Usage Examples
@@ -98,9 +98,10 @@ curl http://127.0.0.1:8787/healthz
 1. OpenAI-compatible call
 
 ```bash
-curl -X POST http://127.0.0.1:8787/v1/chat/completions \
+curl -X POST http://127.0.0.1:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
+    "agent_id":"default",
     "model":"gpt-4o-mini",
     "messages":[{"role":"user","content":"Say hello in one sentence."}]
   }'
@@ -109,9 +110,10 @@ curl -X POST http://127.0.0.1:8787/v1/chat/completions \
 2. Direct run call
 
 ```bash
-curl -X POST http://127.0.0.1:8787/v1/run \
+curl -X POST http://127.0.0.1:8000/v1/run \
   -H "Content-Type: application/json" \
   -d '{
+    "agent_id":"default",
     "input":{"text":"Summarize this paragraph in Chinese."}
   }'
 ```
@@ -131,10 +133,36 @@ Runtime behavior:
 2. Field-level multi-source merge is not applied.
 3. If the resolved file does not exist and path is writable, default config is auto-created.
 
+Model gateway (stage-1 complete):
+1. Configure providers under `model_gateway.providers`.
+2. Configure agent instances under `agents` and set `default_agent`.
+3. Supported `api_style`: `openai` and `anthropic`.
+4. Recommended key env vars:
+   - `ACTIONAGENT_OPENAI_API_KEY`
+   - `ACTIONAGENT_ANTHROPIC_API_KEY`
+5. Reference design doc:
+   - `docs/design/agent-model-provider-configuration.md`
+
+### Multi-Agent Migration (Rollout / Rollback)
+
+Rollout:
+1. Upgrade binary to the version with multi-agent support.
+2. Change `http_addr` to `127.0.0.1:8000` (or pass `--addr` override).
+3. Add `default_agent` and `agents` to config; keep one `default` agent first.
+4. Gradually route traffic with `agent_id` or `X-Agent-ID`; requests without agent selector still route to `default_agent`.
+5. Verify metrics include `model_agent_<id>_*` counters.
+
+Rollback:
+1. Stop the new binary and restart the previous stable binary.
+2. Restore previous config file backup.
+3. If needed, remove `agent_id` headers/body fields from client requests and route through legacy single-agent flow.
+
 ### Deployment Helper Scripts
 
 1. PowerShell: `./scripts/start-agent.ps1`
 2. Bash: `./scripts/start-agent.sh`
+3. Model path verify (PowerShell): `./scripts/verify-model-provider.ps1`
+4. Model path verify (Bash): `./scripts/verify-model-provider.sh`
 
 ## 3. Development Guide
 

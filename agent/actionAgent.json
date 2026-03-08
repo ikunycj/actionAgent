@@ -1,9 +1,49 @@
 {
   "app_name": "ActionAgent",
-  "http_addr": "127.0.0.1:8787",
+  "http_addr": "127.0.0.1:8000",
   "log_level": "info",
   "enable_relay": true,
   "enable_ws_bridge": true,
   "queue_concurrency": 4,
-  "dedupe_ttl_seconds": 300
+  "dedupe_ttl_seconds": 300,
+  "default_agent": "default",
+  "agents": [
+    {
+      "agent_id": "default",
+      "enabled": true,
+      "model_profile": "deepseek",
+      "prompt_profile": "default",
+      "tool_policy": "default",
+      "memory_policy": "default",
+      "session_policy": "default"
+    }
+  ],
+  "model_gateway": {
+    "primary": "deepseek",
+    "fallbacks": [
+      "openai"
+    ],
+    "providers": [
+      {
+        "name": "openai",
+        "api_style": "openai",
+        "base_url": "http://api.yescode.cloud/v1",
+        "api_key": "sk-bd7da189272fb133341f5fa2dbaea9e2e52847f57a8c79bc2627f1324f84a79a",
+        "model": "gpt-5.2-codex",
+        "timeout_ms": 20000,
+        "max_attempts": 2,
+        "enabled": true
+      },
+      {
+        "name": "deepseek",
+        "api_style": "openai",
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "sk-b338f43ee80d4217b21ca6faadc18e4d",
+        "model": "deepseek-chat",
+        "timeout_ms": 20000,
+        "max_attempts": 2,
+        "enabled": true
+      }
+    ]
+  }
 }

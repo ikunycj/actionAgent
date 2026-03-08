@@ -1,0 +1,1 @@
+startup failed: config init: agents[0].model_profile references unknown provider: openai-main
