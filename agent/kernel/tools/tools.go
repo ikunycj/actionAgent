@@ -1,8 +1,13 @@
 package tools
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -56,49 +61,110 @@ type Binding struct {
 }
 
 type Token struct {
-	ID       string
-	Mode     ApprovalMode
-	Binding  Binding
-	Expires  time.Time
-	Consumed bool
+	ID       string       `json:"id"`
+	Mode     ApprovalMode `json:"mode"`
+	Binding  Binding      `json:"binding"`
+	Expires  time.Time    `json:"expires"`
+	Consumed bool         `json:"consumed"`
 }
 
 type ApprovalManager struct {
-	mu     sync.Mutex
-	tokens map[string]Token
+	mu       sync.Mutex
+	tokens   map[string]Token
+	onChange func()
 }
 
 func NewApprovalManager() *ApprovalManager {
 	return &ApprovalManager{tokens: map[string]Token{}}
 }
 
+func (a *ApprovalManager) SetOnChange(fn func()) {
+	a.mu.Lock()
+	a.onChange = fn
+	a.mu.Unlock()
+}
+
+func (a *ApprovalManager) notifyChange() {
+	a.mu.Lock()
+	fn := a.onChange
+	a.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
 func (a *ApprovalManager) Issue(t Token) {
 	a.mu.Lock()
 	a.tokens[t.ID] = t
 	a.mu.Unlock()
+	a.notifyChange()
 }
 
 func (a *ApprovalManager) ValidateAndConsume(tokenID string, b Binding, now time.Time) error {
+	changed := false
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	t, ok := a.tokens[tokenID]
 	if !ok {
+		a.mu.Unlock()
 		return errors.New("approval token not found")
 	}
 	if now.After(t.Expires) {
+		a.mu.Unlock()
 		return errors.New("approval token expired")
 	}
 	if t.Binding != b {
+		a.mu.Unlock()
 		return errors.New("approval binding mismatch")
 	}
 	if t.Mode == AllowOnce {
 		if t.Consumed {
+			a.mu.Unlock()
 			return errors.New("approval token already consumed")
 		}
 		t.Consumed = true
 		a.tokens[tokenID] = t
+		changed = true
+	}
+	a.mu.Unlock()
+	if changed {
+		a.notifyChange()
 	}
 	return nil
+}
+
+func (a *ApprovalManager) Snapshot() map[string]Token {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make(map[string]Token, len(a.tokens))
+	for k, v := range a.tokens {
+		out[k] = v
+	}
+	return out
+}
+
+func (a *ApprovalManager) Restore(tokens map[string]Token) {
+	a.mu.Lock()
+	a.tokens = make(map[string]Token, len(tokens))
+	for k, v := range tokens {
+		a.tokens[k] = v
+	}
+	a.mu.Unlock()
+}
+
+func (a *ApprovalManager) List(limit int) []Token {
+	a.mu.Lock()
+	out := make([]Token, 0, len(a.tokens))
+	for _, t := range a.tokens {
+		out = append(out, t)
+	}
+	a.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Expires.After(out[j].Expires)
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 type AuditRecord struct {
@@ -113,21 +179,36 @@ type AuditRecord struct {
 	Result    map[string]any `json:"result,omitempty"`
 }
 
+type persistedState struct {
+	Tokens map[string]Token `json:"tokens"`
+	Audit  []AuditRecord    `json:"audit"`
+}
+
 type Runtime struct {
 	registry  *Registry
 	approvals *ApprovalManager
 	mu        sync.Mutex
 	audit     []AuditRecord
+
+	statePath string
+	maxAudit  int
 }
 
 func NewRuntime(reg *Registry, approvals *ApprovalManager) *Runtime {
+	return NewRuntimeWithState(reg, approvals, "")
+}
+
+func NewRuntimeWithState(reg *Registry, approvals *ApprovalManager, statePath string) *Runtime {
 	if reg == nil {
 		reg = NewRegistry()
 	}
 	if approvals == nil {
 		approvals = NewApprovalManager()
 	}
-	return &Runtime{registry: reg, approvals: approvals}
+	r := &Runtime{registry: reg, approvals: approvals, statePath: statePath, maxAudit: 2000}
+	r.loadState()
+	r.approvals.SetOnChange(r.persistState)
+	return r
 }
 
 func (r *Runtime) Execute(toolName string, input map[string]any, binding Binding, tokenID string) (map[string]any, error) {
@@ -156,7 +237,11 @@ func (r *Runtime) Execute(toolName string, input map[string]any, binding Binding
 func (r *Runtime) record(a AuditRecord) {
 	r.mu.Lock()
 	r.audit = append(r.audit, a)
+	if r.maxAudit > 0 && len(r.audit) > r.maxAudit {
+		r.audit = r.audit[len(r.audit)-r.maxAudit:]
+	}
 	r.mu.Unlock()
+	r.persistState()
 }
 
 func (r *Runtime) Audit() []AuditRecord {
@@ -165,4 +250,77 @@ func (r *Runtime) Audit() []AuditRecord {
 	out := make([]AuditRecord, len(r.audit))
 	copy(out, r.audit)
 	return out
+}
+
+func (r *Runtime) QueryAudit(limit int, toolName, decision string) []AuditRecord {
+	toolName = strings.TrimSpace(toolName)
+	decision = strings.TrimSpace(decision)
+	src := r.Audit()
+	out := make([]AuditRecord, 0, len(src))
+	for i := len(src) - 1; i >= 0; i-- {
+		rec := src[i]
+		if toolName != "" && rec.Tool != toolName {
+			continue
+		}
+		if decision != "" && rec.Decision != decision {
+			continue
+		}
+		out = append(out, rec)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func (r *Runtime) ListApprovalTokens(limit int) []Token {
+	return r.approvals.List(limit)
+}
+
+func (r *Runtime) loadState() {
+	if strings.TrimSpace(r.statePath) == "" {
+		return
+	}
+	b, err := os.ReadFile(r.statePath)
+	if err != nil {
+		return
+	}
+	var state persistedState
+	if err := json.Unmarshal(b, &state); err != nil {
+		return
+	}
+	r.approvals.Restore(state.Tokens)
+	r.mu.Lock()
+	r.audit = make([]AuditRecord, len(state.Audit))
+	copy(r.audit, state.Audit)
+	if r.maxAudit > 0 && len(r.audit) > r.maxAudit {
+		r.audit = r.audit[len(r.audit)-r.maxAudit:]
+	}
+	r.mu.Unlock()
+}
+
+func (r *Runtime) persistState() {
+	if strings.TrimSpace(r.statePath) == "" {
+		return
+	}
+	state := persistedState{
+		Tokens: r.approvals.Snapshot(),
+	}
+	r.mu.Lock()
+	state.Audit = make([]AuditRecord, len(r.audit))
+	copy(state.Audit, r.audit)
+	r.mu.Unlock()
+
+	b, err := json.Marshal(state)
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(r.statePath), 0o755); err != nil {
+		return
+	}
+	tmp := r.statePath + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, r.statePath)
 }

@@ -1,9 +1,0 @@
-{
-  "app_name": "ActionAgent",
-  "http_addr": "127.0.0.1:8787",
-  "log_level": "info",
-  "enable_relay": true,
-  "enable_ws_bridge": true,
-  "queue_concurrency": 4,
-  "dedupe_ttl_seconds": 300
-}
