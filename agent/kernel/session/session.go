@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -105,12 +106,28 @@ type TranscriptEntry struct {
 }
 
 type TranscriptStore struct {
-	mu    sync.RWMutex
-	byKey map[string][]TranscriptEntry
+	mu          sync.RWMutex
+	byKey       map[string][]TranscriptEntry
+	policy      MaintenancePolicy
+	lastResults map[string]MaintenanceResult
 }
 
 func NewTranscriptStore() *TranscriptStore {
-	return &TranscriptStore{byKey: map[string][]TranscriptEntry{}}
+	return NewTranscriptStoreWithPolicy(MaintenancePolicy{})
+}
+
+func NewTranscriptStoreWithPolicy(policy MaintenancePolicy) *TranscriptStore {
+	return &TranscriptStore{
+		byKey:       map[string][]TranscriptEntry{},
+		policy:      policy,
+		lastResults: map[string]MaintenanceResult{},
+	}
+}
+
+func (s *TranscriptStore) SetPolicy(policy MaintenancePolicy) {
+	s.mu.Lock()
+	s.policy = policy
+	s.mu.Unlock()
 }
 
 func (s *TranscriptStore) Append(key string, e TranscriptEntry) {
@@ -119,6 +136,7 @@ func (s *TranscriptStore) Append(key string, e TranscriptEntry) {
 		e.At = time.Now().UTC()
 	}
 	s.byKey[key] = append(s.byKey[key], e)
+	s.lastResults[key] = s.applyPolicyLocked(key, e.At)
 	s.mu.Unlock()
 }
 
@@ -147,4 +165,92 @@ func (s *TranscriptStore) RemoveOlderThan(key string, deadline time.Time) int {
 	}
 	s.byKey[key] = out
 	return removed
+}
+
+type StoreStats struct {
+	Entries   int   `json:"entries"`
+	DiskBytes int64 `json:"disk_bytes"`
+}
+
+func (s *TranscriptStore) Stats(key string) StoreStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return StoreStats{
+		Entries:   len(s.byKey[key]),
+		DiskBytes: estimateDiskBytes(s.byKey[key]),
+	}
+}
+
+func (s *TranscriptStore) ApplyPolicy(key string, now time.Time) MaintenanceResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	res := s.applyPolicyLocked(key, now)
+	s.lastResults[key] = res
+	return res
+}
+
+func (s *TranscriptStore) LastMaintenance(key string) MaintenanceResult {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastResults[key]
+}
+
+func (s *TranscriptStore) applyPolicyLocked(key string, now time.Time) MaintenanceResult {
+	policy := s.policy
+	entries := s.byKey[key]
+	res := MaintenanceResult{}
+
+	if policy.PruneAfter > 0 {
+		deadline := now.Add(-policy.PruneAfter)
+		if policy.Mode == EnforceMode {
+			filtered := entries[:0]
+			removed := 0
+			for _, e := range entries {
+				if e.At.Before(deadline) {
+					removed++
+					continue
+				}
+				filtered = append(filtered, e)
+			}
+			if removed > 0 {
+				res.Actions = append(res.Actions, "prune_by_age")
+			}
+			entries = filtered
+		} else {
+			for _, e := range entries {
+				if e.At.Before(deadline) {
+					res.Warnings = append(res.Warnings, "prune_after exceeded")
+					break
+				}
+			}
+		}
+	}
+
+	disk := estimateDiskBytes(entries)
+	eval := Evaluate(policy, len(entries), disk)
+	res.Warnings = append(res.Warnings, eval.Warnings...)
+	res.Actions = append(res.Actions, eval.Actions...)
+
+	if policy.Mode == EnforceMode && policy.MaxEntries > 0 && len(entries) > policy.MaxEntries {
+		entries = entries[len(entries)-policy.MaxEntries:]
+	}
+	if policy.Mode == EnforceMode && policy.MaxDisk > 0 {
+		for len(entries) > 0 && estimateDiskBytes(entries) > policy.MaxDisk {
+			entries = entries[1:]
+		}
+	}
+	s.byKey[key] = entries
+	return res
+}
+
+func estimateDiskBytes(entries []TranscriptEntry) int64 {
+	var n int64
+	for _, e := range entries {
+		b, _ := json.Marshal(e)
+		n += int64(len(b))
+	}
+	return n
 }

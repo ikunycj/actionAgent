@@ -51,6 +51,7 @@ type ExecutionEnvelope struct {
 	TaskID         string         `json:"task_id"`
 	RunID          string         `json:"run_id"`
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
+	AgentID        string         `json:"agent_id,omitempty"`
 	Lane           string         `json:"lane"`
 	SessionKey     string         `json:"session_key,omitempty"`
 	Operation      string         `json:"operation"`
@@ -112,6 +113,13 @@ func (e *Engine) EnterDraining() {
 
 func (e *Engine) ExitDraining() {
 	e.queue.SetDraining(false)
+}
+
+func (e *Engine) Pending() int {
+	if e == nil || e.queue == nil {
+		return 0
+	}
+	return e.queue.Pending()
 }
 
 func (e *Engine) Submit(ctx context.Context, env ExecutionEnvelope) (Outcome, error) {

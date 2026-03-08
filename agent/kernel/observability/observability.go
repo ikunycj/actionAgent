@@ -3,7 +3,9 @@ package observability
 import (
 	"encoding/json"
 	"log"
+	"math"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,4 +107,157 @@ func (m *Metrics) SetGauge(name string, v int64) {
 	m.mu.Lock()
 	m.gauges[name] = v
 	m.mu.Unlock()
+}
+
+type AlertSeverity string
+
+const (
+	SeverityWarn  AlertSeverity = "warn"
+	SeverityError AlertSeverity = "error"
+)
+
+type Alert struct {
+	Code      string        `json:"code"`
+	Severity  AlertSeverity `json:"severity"`
+	Message   string        `json:"message"`
+	Value     float64       `json:"value"`
+	Threshold float64       `json:"threshold"`
+}
+
+type AlertThresholds struct {
+	QueueDepthWarn      int64
+	ApprovalTimeoutWarn uint64
+	NodeOnlineMin       int64
+	TaskFailureRateWarn float64
+	MinSamples          int64
+}
+
+func DefaultAlertThresholds() AlertThresholds {
+	return AlertThresholds{
+		QueueDepthWarn:      8,
+		ApprovalTimeoutWarn: 3,
+		NodeOnlineMin:       1,
+		TaskFailureRateWarn: 0.30,
+		MinSamples:          5,
+	}
+}
+
+func EvaluateAlerts(snapshot map[string]any, th AlertThresholds) []Alert {
+	alerts := []Alert{}
+	queueDepth := asInt64(snapshot["queue_depth"])
+	approvalTO := asUint64(snapshot["approval_timeout"])
+	nodeOnline := asInt64(snapshot["node_online"])
+	taskSuccess := asInt64(snapshot["task_success"])
+	taskFail := asInt64(snapshot["task_fail"])
+
+	if queueDepth >= th.QueueDepthWarn {
+		alerts = append(alerts, Alert{
+			Code:      "queue_depth_high",
+			Severity:  SeverityWarn,
+			Message:   "queue depth exceeded warning threshold",
+			Value:     float64(queueDepth),
+			Threshold: float64(th.QueueDepthWarn),
+		})
+	}
+	if int64(approvalTO) >= int64(th.ApprovalTimeoutWarn) {
+		alerts = append(alerts, Alert{
+			Code:      "approval_timeout_high",
+			Severity:  SeverityWarn,
+			Message:   "approval timeout count exceeded warning threshold",
+			Value:     float64(approvalTO),
+			Threshold: float64(th.ApprovalTimeoutWarn),
+		})
+	}
+	if nodeOnline < th.NodeOnlineMin {
+		alerts = append(alerts, Alert{
+			Code:      "node_online_low",
+			Severity:  SeverityError,
+			Message:   "online nodes below minimum threshold",
+			Value:     float64(nodeOnline),
+			Threshold: float64(th.NodeOnlineMin),
+		})
+	}
+
+	total := taskSuccess + taskFail
+	if total >= th.MinSamples && total > 0 {
+		failRate := float64(taskFail) / float64(total)
+		if failRate >= th.TaskFailureRateWarn {
+			alerts = append(alerts, Alert{
+				Code:      "task_failure_rate_high",
+				Severity:  SeverityWarn,
+				Message:   "task failure rate exceeded warning threshold",
+				Value:     roundTo(failRate, 4),
+				Threshold: th.TaskFailureRateWarn,
+			})
+		}
+	}
+	return alerts
+}
+
+func roundTo(v float64, digits int) float64 {
+	if digits < 0 {
+		return v
+	}
+	base := math.Pow(10, float64(digits))
+	return math.Round(v*base) / base
+}
+
+func asInt64(v any) int64 {
+	switch x := v.(type) {
+	case nil:
+		return 0
+	case int:
+		return int64(x)
+	case int64:
+		return x
+	case uint64:
+		return int64(x)
+	case float64:
+		return int64(x)
+	case json.Number:
+		n, _ := x.Int64()
+		return n
+	case string:
+		n, err := strconv.ParseInt(x, 10, 64)
+		if err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func asUint64(v any) uint64 {
+	switch x := v.(type) {
+	case nil:
+		return 0
+	case int:
+		if x < 0 {
+			return 0
+		}
+		return uint64(x)
+	case int64:
+		if x < 0 {
+			return 0
+		}
+		return uint64(x)
+	case uint64:
+		return x
+	case float64:
+		if x < 0 {
+			return 0
+		}
+		return uint64(x)
+	case json.Number:
+		n, _ := x.Int64()
+		if n < 0 {
+			return 0
+		}
+		return uint64(n)
+	case string:
+		n, err := strconv.ParseUint(x, 10, 64)
+		if err == nil {
+			return n
+		}
+	}
+	return 0
 }
