@@ -1,167 +1,175 @@
-# ActionAgent
+# ActionAgent - 部署优先的 Agent 运行时
 
-一个部署优先（Deployment-first）的分布式 Agent 平台，聚焦任务可执行性、可观测性与可审计性。
+一个部署优先（Deployment-first）的分布式 Agent 运行时，聚焦任务可执行性、可观测性与可审计性。
 
 English version: [README.md](README.md)
 
-## 1. 项目宏观介绍
+[快速开始](#快速开始tldr) | [API 总览](#api-总览) | [配置规则](#配置规则) | [开发流程](#开发流程) | [路线图](#路线图)
 
-### 项目定位
+ActionAgent 采用“控制面 + 执行面”双平面：客户端或 Web 入口触发任务，`actionagentd` 负责执行、回传，并输出可追踪的日志、指标、事件和审计记录。
 
-ActionAgent 的目标是在低部署成本下，提供可快速启动、稳定运行、可持续观测的 Agent 核心运行时。
+## 核心能力亮点
 
-核心价值：
-1. 从客户端或 Web 入口快速发起临时任务。
-2. 在本机或远端节点持续运行长任务。
-3. 以日志和审计记录保障结果可追溯。
+- 单二进制运行时（`actionagentd`），支持 Windows/Linux/macOS。
+- OpenAI 兼容接口：`POST /v1/chat/completions` 与 `POST /v1/responses`。
+- 任务执行接口：`POST /v1/run`，支持车道/会话/幂等键。
+- Typed frame 桥接接口：`POST /ws/frame`，可做 req/res/event 集成。
+- 可观测接口：`GET /healthz`、`GET /events`、`GET /metrics`、`GET /alerts`。
+- 多 Agent 选择优先级固定：`body.agent_id` > `X-Agent-ID` > `default_agent`。
+- 模型网关支持 `primary + fallbacks`，Provider 适配 `openai` 与 `anthropic`。
 
-### 宏观架构
+## 快速开始（TL;DR）
 
-ActionAgent 采用“控制面 + 执行面”双平面模型。
-
-1. Core（执行面核心）
-- 形态：Go 单二进制运行时（`actionagentd`）
-- 平台：Windows / Linux / macOS
-- 职责：任务执行、模型路由、工具运行、日志、事件与审计输出
-
-2. Client（控制面）
-- 形态：桌面端/移动端（分阶段）
-- 职责：发起任务、查看状态、处理审批、接收回执
-
-3. Cloud Relay（可选）
-- 职责：跨网络节点接力与协同
-
-4. Team Console（后续）
-- 职责：组织治理、策略模板、审计中心、节点编排
-
-### 当前 MVP 范围
-
-1. 单进程运行时（`actionagentd`）
-2. 健康检查接口（`GET /healthz`）
-3. OpenAI 兼容接口（`POST /v1/chat/completions`）
-4. 直接执行接口（`POST /v1/run`）
-5. Typed frame 桥接接口（`POST /ws/frame`）
-6. 基础事件流与指标输出
-
-### 当前实现进展（2026-03-08）
-
-内核已达到“可运行、可观测、可扩展”的初步形态，当前已落地：
-1. 配置加载与来源解析（`--config` / 环境变量 / 二进制目录 / 系统默认）
-2. 任务引擎（车道并发、状态迁移、幂等去重）
-3. 调度与终态收敛链路（含聚合输出）
-4. 模型网关主备路由（primary + fallback）
-5. 工具运行时分级权限与审批令牌校验
-6. 会话转录与记忆降级检索能力
-7. 事件总线与指标接口输出
-
-后续阶段重点：
-1. 多节点接力稳定性与恢复快照增强
-2. 生产级审批流与持久化治理
-3. WebUI 与团队治理能力完善
-
-### 路线概览
-
-当前仓库仍处于 MVP 持续迭代阶段，但内核主链路已具备可用基线。
-
-## 2. 项目使用方法
-
-### 环境要求
-
-1. Go 1.25+（推荐 Go 1.25.8）
-2. Windows/Linux/macOS 命令行环境
-
-### 本机快速启动
-
-在仓库根目录执行：
-
-1. 构建
+运行环境：Go `1.25+`（仓库 toolchain：`go1.25.8`）。
 
 ```bash
 cd agent
 go build -o actionagentd ./cmd/actionagentd
-```
-
-2. 通过显式配置路径启动（推荐）
-
-```bash
 ./actionagentd --config "$(pwd)/actionAgent.json"
 ```
 
-3. 健康检查
+PowerShell:
 
-```bash
-curl http://127.0.0.1:8787/healthz
+```powershell
+cd agent
+go build -o actionagentd.exe ./cmd/actionagentd
+.\actionagentd.exe --config "$PWD\actionAgent.json"
 ```
 
-### API 调用示例
-
-1. OpenAI 兼容调用
+健康检查：
 
 ```bash
-curl -X POST http://127.0.0.1:8787/v1/chat/completions \
+curl http://127.0.0.1:8000/healthz
+```
+
+## API 总览
+
+| 接口 | 方法 | 用途 |
+| --- | --- | --- |
+| `/healthz` | `GET` | 存活/就绪检查 |
+| `/v1/run` | `POST` | 通用任务执行 |
+| `/v1/chat/completions` | `POST` | OpenAI Chat Completions 兼容入口 |
+| `/v1/responses` | `POST` | OpenAI Responses 风格入口（支持流式透传） |
+| `/ws/frame` | `POST` | typed frame 请求/响应桥接 |
+| `/events` | `GET` | 实时事件流（JSON 行流，非 SSE） |
+| `/metrics` | `GET` | 运行指标快照 |
+| `/alerts` | `GET` | 告警评估结果 |
+
+OpenAI 兼容调用示例：
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
+    "agent_id":"default",
     "model":"gpt-4o-mini",
     "messages":[{"role":"user","content":"Say hello in one sentence."}]
   }'
 ```
 
-2. 直接任务调用
+直接任务调用示例：
 
 ```bash
-curl -X POST http://127.0.0.1:8787/v1/run \
+curl -X POST http://127.0.0.1:8000/v1/run \
   -H "Content-Type: application/json" \
   -d '{
+    "agent_id":"default",
     "input":{"text":"Summarize this paragraph in Chinese."}
   }'
 ```
 
-### 配置规则
+## 工作方式（简版）
 
-配置路径解析优先级：
+```text
+客户端 / CLI / 后续 UI
+          |
+          v
+      HTTP Gateway
+(/v1/run, /v1/chat/completions, /v1/responses, /ws/frame)
+          |
+          v
+  Task Engine + Dispatcher
+          |
+          v
+Model Gateway (primary -> fallbacks)
+          |
+          v
+Tools + Session Store + Audit + Metrics/Event Bus
+```
+
+## 配置规则
+
+配置路径解析顺序：
+
 1. `--config`
 2. `ACTIONAGENT_CONFIG`
-3. `二进制所在目录/actionAgent.json`
-4. 系统默认路径（优先级低于二进制目录）
-- Linux：`/etc/<appname>/actionAgent.json`
-- Windows：`C:\ProgramData\<AppName>\acgtionAgent.json`
+3. `<二进制目录>/actionAgent.json`
+4. 系统默认路径
+- Linux/macOS：`/etc/actionagent/actionAgent.json`
+- Windows：`C:\ProgramData\ActionAgent\acgtionAgent.json`（当前实现路径）
 
 运行时行为：
-1. 仅加载一个已解析的配置文件。
-2. 不做字段级多源合并。
-3. 当解析路径文件不存在且可写时，自动初始化默认配置。
 
-### 部署辅助脚本
+1. 只加载一个最终解析出的配置文件。
+2. 不做字段级多来源合并。
+3. 若解析路径不存在且父目录可写，会自动生成默认配置。
 
-1. PowerShell：`./scripts/start-agent.ps1`
-2. Bash：`./scripts/start-agent.sh`
+模型 Provider 配置建议（优先使用环境变量注入密钥）：
 
-## 3. 项目开发方法
+```json
+{
+  "model_gateway": {
+    "primary": "openai-main",
+    "fallbacks": ["anthropic-backup"],
+    "providers": [
+      {
+        "name": "openai-main",
+        "api_style": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "ACTIONAGENT_OPENAI_API_KEY",
+        "model": "gpt-4o-mini",
+        "timeout_ms": 20000,
+        "max_attempts": 2,
+        "enabled": true
+      }
+    ]
+  }
+}
+```
 
-### 仓库结构
+## 部署辅助脚本
 
-1. `agent/`：Agent 内核运行时实现（Go）
-2. `docs/`：产品/技术设计与参考文档
-3. `openspec/`：变更提案、规格、设计、任务追踪
-4. `scripts/`：本地开发与启动辅助脚本
+- 启动（PowerShell）：`./scripts/start-agent.ps1`
+- 启动（Bash）：`./scripts/start-agent.sh`
+- Provider 验证（PowerShell）：`./scripts/verify-model-provider.ps1 -BaseUrl http://127.0.0.1:8000`
+- Provider 验证（Bash）：`./scripts/verify-model-provider.sh http://127.0.0.1:8000`
 
-### 构建与测试
+## 开发流程
 
-在 `agent/` 目录执行：
+仓库结构：
+
+- `agent/`：Go 内核运行时（`actionagentd`）
+- `docs/prd/`：产品/技术规划文档
+- `agent/docs/`：接口、架构与当前状态文档
+- `openspec/`：变更提案、规格、任务追踪
+- `scripts/`：启动与本地辅助脚本
+
+构建与测试：
 
 ```bash
+cd agent
 go test ./...
 ```
 
-### 推荐开发流程
+推荐流程：
 
-1. 先阅读并确认 `docs/design/` 下的产品与技术约束。
+1. 先确认 `docs/prd/` 下的产品与技术约束。
 2. 使用 OpenSpec 创建或更新变更（`/opsx:propose`）。
 3. 使用 `/opsx:apply` 实施任务，并同步更新任务勾选状态。
 4. 提交评审前执行测试（`go test ./...`）。
-5. 变更完成后执行归档（`/opsx:archive <change-name>`）。
+5. 变更完成后归档（`/opsx:archive <change-name>`）。
 
-### 代码质量与提交流程
+代码质量与提交流程：
 
 1. Commit message 必须为英文（ASCII）。
 2. 启用本地提交钩子：
@@ -170,10 +178,29 @@ go test ./...
 powershell -ExecutionPolicy Bypass -File ./scripts/setup-hooks.ps1
 ```
 
-3. 代码改动应与当前 OpenSpec 任务保持一致且范围最小化。
+3. 代码改动应与当前 OpenSpec 任务保持一致，范围尽量最小。
 
-### 相关文档
+## 路线图
 
-1. 总体产品规划：`docs/actionagent-design.md`
-2. Agent 内核产品设计：`docs/design/agent-kernel-product-design.md`
-3. Agent 内核技术方案：`docs/design/agent-kernel-technical-solution.md`
+当前 MVP 基线：
+
+1. 单进程运行时（`actionagentd`）+ 任务引擎 + 调度器。
+2. OpenAI 风格接口与 typed frame 桥接接口可用。
+3. 可观测链路（`healthz/events/metrics/alerts`）与审计输出已打通。
+
+后续阶段重点：
+
+1. 多节点接力稳定性与恢复快照增强。
+2. 生产级审批流与持久化治理能力完善。
+3. Web UI 与团队治理能力建设。
+
+## 文档索引
+
+- 核心 API：`agent/docs/API.md`
+- 当前状态：`agent/docs/CURRENT.md`
+- 架构文档：`agent/docs/ARCHITECTURE.md`
+- 内核 PRD：`agent/docs/PRD.md`
+- 产品规划：`docs/prd/actionagent-design.md`
+- 内核产品设计：`docs/prd/agent-kernel-product-design.md`
+- 内核技术方案：`docs/prd/agent-kernel-technical-solution.md`
+- 模型 Provider 配置：`docs/prd/agent-model-provider-configuration.md`
