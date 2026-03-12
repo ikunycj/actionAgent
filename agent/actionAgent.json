@@ -1,6 +1,5 @@
 {
-  "app_name": "ActionAgent",
-  "http_addr": "127.0.0.1:8000",
+  "port": 8000,
   "log_level": "info",
   "enable_relay": true,
   "enable_ws_bridge": true,
@@ -19,7 +18,7 @@
     }
   ],
   "model_gateway": {
-    "primary": "deepseek",
+    "primary": "openai",
     "fallbacks": [
       "openai"
     ],
@@ -29,7 +28,7 @@
         "api_style": "openai",
         "base_url": "http://api.yescode.cloud/v1",
         "api_key": "sk-bd7da189272fb133341f5fa2dbaea9e2e52847f57a8c79bc2627f1324f84a79a",
-        "model": "gpt-5.2-codex",
+        "model": "gpt-5.2",
         "timeout_ms": 20000,
         "max_attempts": 2,
         "enabled": true

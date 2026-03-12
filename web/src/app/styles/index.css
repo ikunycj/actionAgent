@@ -1,0 +1,29 @@
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, hsl(var(--color-accent-soft) / 0.2), transparent 30%),
+    linear-gradient(180deg, hsl(var(--color-bg)), hsl(var(--color-panel-alt)));
+  color: hsl(var(--color-text));
+  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}

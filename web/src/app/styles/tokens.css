@@ -1,0 +1,13 @@
+:root {
+  --color-bg: 210 25% 96%;
+  --color-panel: 0 0% 100%;
+  --color-panel-alt: 210 20% 92%;
+  --color-border: 214 18% 84%;
+  --color-text: 220 24% 16%;
+  --color-text-muted: 218 12% 42%;
+  --color-accent: 196 89% 38%;
+  --color-accent-soft: 195 100% 85%;
+  --color-success: 146 62% 36%;
+  --color-warning: 36 92% 48%;
+  --color-danger: 0 72% 48%;
+}
