@@ -80,18 +80,18 @@
 ## 4. 模块规划（`actionAgent/agent`）
 
 建议模块边界：
-1. `kernel/gateway`：协议、鉴权、请求路由、WS 连接管理。
-2. `kernel/task`：任务实体、状态机、幂等、队列、重试。
-3. `kernel/dispatch`：节点能力表、调度器、接力策略。
-4. `kernel/model`：供应商适配器、路由策略、故障分类、fallback。
-5. `kernel/tools`：工具目录、策略管线、审批集成、执行代理。
-6. `kernel/session`：会话 key、会话存储、转录、维护任务。
-7. `kernel/memory`：记忆文件层、索引层、查询层、降级策略。
-8. `kernel/events`：事件模型、发布订阅、持久化输出。
-9. `kernel/security`：密钥引用、审计、策略校验、风险扫描。
-10. `kernel/config`：配置加载、diff、热重载计划。
-11. `kernel/storage`：KV/SQLite/对象存储抽象。
-12. `kernel/observability`：metrics、trace、structured log。
+1. `internal/adapter/httpapi`：协议、请求路由、WS typed frame 入口。
+2. `internal/core/task`：任务实体、状态机、幂等、队列、重试。
+3. `internal/core/dispatch`：节点能力表、调度器、接力策略。
+4. `internal/core/model`：供应商适配器、路由策略、故障分类、fallback。
+5. `internal/core/tools`：工具目录、策略管线、审批集成、执行代理。
+6. `internal/core/session`：会话 key、会话存储、转录、维护任务。
+7. `internal/core/memory`：记忆文件层、索引层、查询层、降级策略。
+8. `internal/platform/events`：事件模型、发布订阅、持久化输出。
+9. `internal/platform/config`：配置加载、diff、热重载计划。
+10. `internal/platform/storage`：KV/SQLite/对象存储抽象。
+11. `internal/platform/observability`：metrics、trace、structured log。
+12. `internal/app/runtime`：运行时装配、agent registry、model runtime 与启动流程。
 
 ## 5. 核心数据模型（逻辑）
 

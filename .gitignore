@@ -10,3 +10,8 @@
 /agent/tmp-go-modcache/*
 /agent/.tmp-appdata/*
 /agent/.tmp-gopath/*
+/agent/actionagentd
+/agent/actionagentd.exe
+/agent/.tmp-smoke
+/agent/coverage
+/out/
